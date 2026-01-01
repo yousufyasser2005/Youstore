@@ -1,0 +1,23 @@
+{
+    "name": "Paint",
+    "version": "1.0.0",
+    "description": "A full-featured painting application with multiple drawing tools, customizable colors, and file management. Draw, create, and express your creativity!",
+    "author": "YouOS Team",
+    "category": "Graphics",
+    "icon": "🎨",
+    "size": "~45KB",
+    "features": [
+        "Multiple drawing tools (Pen, Eraser, Line, Rectangle, Circle, Ellipse)",
+        "Flood fill tool for coloring areas",
+        "Adjustable pen size (1-50 pixels)",
+        "8 preset colors + custom color picker",
+        "Save/Open PNG, JPG, BMP files",
+        "Clear canvas option",
+        "Beautiful glassmorphic UI",
+        "Anti-aliased drawing for smooth lines"
+    ],
+    "main_file": "main.py",
+    "requirements": [
+        "PyQt6"
+    ]
+}
