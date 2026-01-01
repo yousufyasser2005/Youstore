@@ -55,13 +55,25 @@ class Canvas(QWidget):
         self.last_point = QPoint()
         
         # Tool settings
-        self.tool = "pen"  # pen, eraser, line, rectangle, circle, fill
+        self.tool = "pen"  # pen, eraser, line, rectangle, circle, fill, select
         self.pen_color = QColor(0, 0, 0)
         self.pen_width = 3
         
         # For shape drawing
         self.start_point = None
         self.temp_pixmap = None
+        
+        # Undo/Redo history
+        self.history = []
+        self.history_index = -1
+        self.max_history = 50
+        self.save_state()
+        
+        # Selection tool
+        self.selection_rect = None
+        self.selected_image = None
+        self.selection_offset = None
+        self.is_moving = False
         
         self.setMouseTracking(True)
     
@@ -72,6 +84,21 @@ class Canvas(QWidget):
         # Draw temporary shape while dragging
         if self.temp_pixmap:
             painter.drawPixmap(0, 0, self.temp_pixmap)
+        
+        # Draw selection rectangle
+        if self.selection_rect and self.tool == "select":
+            painter.setPen(QPen(QColor(59, 130, 246), 2, Qt.PenStyle.DashLine))
+            painter.drawRect(self.selection_rect)
+            
+            # Draw resize handles
+            handles = self.get_selection_handles()
+            painter.setBrush(QBrush(QColor(59, 130, 246)))
+            for handle in handles:
+                painter.drawRect(handle)
+        
+        # Draw selected image being moved
+        if self.selected_image and self.is_moving:
+            painter.drawImage(self.selection_rect.topLeft(), self.selected_image)
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -79,12 +106,26 @@ class Canvas(QWidget):
             self.last_point = event.pos()
             self.start_point = event.pos()
             
-            if self.tool in ["line", "rectangle", "circle", "ellipse"]:
+            if self.tool == "select":
+                # Check if clicking inside selection to move
+                if self.selection_rect and self.selection_rect.contains(event.pos()):
+                    self.is_moving = True
+                    self.selection_offset = event.pos() - self.selection_rect.topLeft()
+                else:
+                    # Start new selection
+                    if self.selected_image:
+                        self.paste_selection()
+                    self.selection_rect = None
+                    self.selected_image = None
+                    self.temp_pixmap = QPixmap(self.size())
+                    self.temp_pixmap.fill(Qt.GlobalColor.transparent)
+            elif self.tool in ["line", "rectangle", "circle", "ellipse"]:
                 # Store current canvas state for shape preview
                 self.temp_pixmap = QPixmap(self.size())
                 self.temp_pixmap.fill(Qt.GlobalColor.transparent)
             elif self.tool == "fill":
                 self.flood_fill(event.pos())
+                self.save_state()
     
     def mouseMoveEvent(self, event):
         if self.drawing and event.buttons() & Qt.MouseButton.LeftButton:
@@ -94,18 +135,45 @@ class Canvas(QWidget):
             elif self.tool == "eraser":
                 self.erase_area(event.pos())
                 self.last_point = event.pos()
+            elif self.tool == "select":
+                if self.is_moving and self.selection_rect:
+                    # Move selection
+                    new_pos = event.pos() - self.selection_offset
+                    self.selection_rect.moveTo(new_pos)
+                    self.update()
+                elif self.temp_pixmap:
+                    # Drawing selection rectangle
+                    self.update_selection_preview(event.pos())
             elif self.tool in ["line", "rectangle", "circle", "ellipse"]:
                 # Update preview
                 self.update_shape_preview(event.pos())
+        
+        # Change cursor over selection
+        if self.tool == "select" and self.selection_rect:
+            if self.selection_rect.contains(event.pos()):
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+            else:
+                self.setCursor(Qt.CursorShape.CrossCursor)
     
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self.drawing:
             self.drawing = False
             
-            if self.tool in ["line", "rectangle", "circle", "ellipse"]:
+            if self.tool == "pen" or self.tool == "eraser":
+                self.save_state()
+            elif self.tool == "select":
+                if self.is_moving:
+                    # Finalize move
+                    self.is_moving = False
+                elif self.temp_pixmap and self.start_point:
+                    # Finalize selection rectangle
+                    self.finalize_selection(event.pos())
+                    self.temp_pixmap = None
+            elif self.tool in ["line", "rectangle", "circle", "ellipse"]:
                 # Finalize shape on canvas
                 self.finalize_shape(event.pos())
                 self.temp_pixmap = None
+                self.save_state()
             
             self.update()
     
@@ -217,8 +285,113 @@ class Canvas(QWidget):
         
         self.update()
     
+    def update_selection_preview(self, end_pos):
+        """Update selection rectangle preview"""
+        if not self.start_point:
+            return
+        
+        self.temp_pixmap = QPixmap(self.size())
+        self.temp_pixmap.fill(Qt.GlobalColor.transparent)
+        
+        painter = QPainter(self.temp_pixmap)
+        pen = QPen(QColor(59, 130, 246), 2, Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        
+        rect = QRect(self.start_point, end_pos).normalized()
+        painter.drawRect(rect)
+        
+        self.update()
+    
+    def finalize_selection(self, end_pos):
+        """Finalize selection and extract image"""
+        if not self.start_point:
+            return
+        
+        self.selection_rect = QRect(self.start_point, end_pos).normalized()
+        
+        # Extract selected area
+        self.selected_image = self.image.copy(self.selection_rect)
+        
+        # Clear the selected area on main canvas (cut operation)
+        painter = QPainter(self.image)
+        painter.fillRect(self.selection_rect, Qt.GlobalColor.white)
+        painter.end()
+        
+        self.update()
+    
+    def paste_selection(self):
+        """Paste the selected image back onto canvas"""
+        if self.selected_image and self.selection_rect:
+            painter = QPainter(self.image)
+            painter.drawImage(self.selection_rect.topLeft(), self.selected_image)
+            painter.end()
+            
+            self.selected_image = None
+            self.selection_rect = None
+            self.save_state()
+            self.update()
+    
+    def get_selection_handles(self):
+        """Get resize handle rectangles for selection"""
+        if not self.selection_rect:
+            return []
+        
+        handle_size = 8
+        rect = self.selection_rect
+        
+        handles = [
+            QRect(rect.left() - handle_size//2, rect.top() - handle_size//2, handle_size, handle_size),
+            QRect(rect.right() - handle_size//2, rect.top() - handle_size//2, handle_size, handle_size),
+            QRect(rect.left() - handle_size//2, rect.bottom() - handle_size//2, handle_size, handle_size),
+            QRect(rect.right() - handle_size//2, rect.bottom() - handle_size//2, handle_size, handle_size),
+        ]
+        
+        return handles
+    
+    def save_state(self):
+        """Save current canvas state to history"""
+        # Remove any states after current index
+        self.history = self.history[:self.history_index + 1]
+        
+        # Add current state
+        self.history.append(self.image.copy())
+        
+        # Limit history size
+        if len(self.history) > self.max_history:
+            self.history.pop(0)
+        else:
+            self.history_index += 1
+        
+        if self.history_index >= self.max_history:
+            self.history_index = self.max_history - 1
+    
+    def undo(self):
+        """Undo last action"""
+        if self.history_index > 0:
+            self.history_index -= 1
+            self.image = self.history[self.history_index].copy()
+            self.selection_rect = None
+            self.selected_image = None
+            self.update()
+            return True
+        return False
+    
+    def redo(self):
+        """Redo last undone action"""
+        if self.history_index < len(self.history) - 1:
+            self.history_index += 1
+            self.image = self.history[self.history_index].copy()
+            self.selection_rect = None
+            self.selected_image = None
+            self.update()
+            return True
+        return False
+    
     def clear_canvas(self):
         self.image.fill(Qt.GlobalColor.white)
+        self.selection_rect = None
+        self.selected_image = None
+        self.save_state()
         self.update()
     
     def set_tool(self, tool):
@@ -299,6 +472,18 @@ class PaintApp(QWidget):
         self.setup_ui()
         self.setWindowTitle("🎨 Paint - YouOS")
         self.resize(1100, 800)
+        
+        # Setup keyboard shortcuts
+        from PyQt6.QtGui import QShortcut, QKeySequence
+        
+        undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        undo_shortcut.activated.connect(self.undo)
+        
+        redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self)
+        redo_shortcut.activated.connect(self.redo)
+        
+        # Initialize button states
+        QTimer.singleShot(100, self.update_undo_redo_buttons)
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -400,6 +585,7 @@ class PaintApp(QWidget):
         tools = [
             ("✏️", "pen"),
             ("🧹", "eraser"),
+            ("✂️", "select"),
             ("📏", "line"),
             ("⬜", "rectangle"),
             ("⭕", "circle"),
@@ -412,7 +598,7 @@ class PaintApp(QWidget):
         
         for i, (icon, tool) in enumerate(tools):
             btn = ToolButton(icon, tool)
-            btn.clicked.connect(lambda checked, t=tool: self.canvas.set_tool(t))
+            btn.clicked.connect(lambda checked, t=tool: self.on_tool_changed(t))
             self.tool_group.addButton(btn)
             
             if i % 3 == 0 and i > 0:
@@ -533,6 +719,60 @@ class PaintApp(QWidget):
         clear_btn.clicked.connect(self.clear_canvas)
         toolbar_layout.addWidget(clear_btn)
         
+        # Undo/Redo buttons
+        undo_redo_layout = QHBoxLayout()
+        undo_redo_layout.setSpacing(8)
+        
+        self.undo_btn = QPushButton("↶")
+        self.undo_btn.setFixedSize(40, 40)
+        self.undo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.undo_btn.setToolTip("Undo (Ctrl+Z)")
+        self.undo_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLORS['bg_tertiary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {COLORS['accent_primary']};
+            }}
+            QPushButton:disabled {{
+                background: {COLORS['bg_secondary']};
+                color: {COLORS['text_secondary']};
+            }}
+        """)
+        self.undo_btn.clicked.connect(self.undo)
+        undo_redo_layout.addWidget(self.undo_btn)
+        
+        self.redo_btn = QPushButton("↷")
+        self.redo_btn.setFixedSize(40, 40)
+        self.redo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.redo_btn.setToolTip("Redo (Ctrl+Y)")
+        self.redo_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLORS['bg_tertiary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {COLORS['accent_primary']};
+            }}
+            QPushButton:disabled {{
+                background: {COLORS['bg_secondary']};
+                color: {COLORS['text_secondary']};
+            }}
+        """)
+        self.redo_btn.clicked.connect(self.redo)
+        undo_redo_layout.addWidget(self.redo_btn)
+        
+        toolbar_layout.addLayout(undo_redo_layout)
+        
         toolbar_layout.addStretch()
         
         return toolbar
@@ -552,6 +792,35 @@ class PaintApp(QWidget):
                 background: {COLORS['accent_hover']};
             }}
         """
+    
+    def on_tool_changed(self, tool):
+        """Handle tool change"""
+        # Paste any active selection before changing tools
+        if self.canvas.selected_image and tool != "select":
+            self.canvas.paste_selection()
+        
+        self.canvas.set_tool(tool)
+        
+        # Reset cursor
+        if tool == "select":
+            self.canvas.setCursor(Qt.CursorShape.CrossCursor)
+        else:
+            self.canvas.setCursor(Qt.CursorShape.ArrowCursor)
+    
+    def undo(self):
+        """Undo last action"""
+        if self.canvas.undo():
+            self.update_undo_redo_buttons()
+    
+    def redo(self):
+        """Redo last undone action"""
+        if self.canvas.redo():
+            self.update_undo_redo_buttons()
+    
+    def update_undo_redo_buttons(self):
+        """Update undo/redo button states"""
+        self.undo_btn.setEnabled(self.canvas.history_index > 0)
+        self.redo_btn.setEnabled(self.canvas.history_index < len(self.canvas.history) - 1)
     
     def on_width_changed(self, value):
         self.canvas.set_pen_width(value)
@@ -576,6 +845,7 @@ class PaintApp(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             self.canvas.clear_canvas()
+            self.update_undo_redo_buttons()
     
     def new_canvas(self):
         reply = QMessageBox.question(
@@ -588,6 +858,7 @@ class PaintApp(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             self.canvas.clear_canvas()
             self.current_file = None
+            self.update_undo_redo_buttons()
     
     def open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -607,6 +878,8 @@ class PaintApp(QWidget):
                 
                 self.canvas.image = image
                 self.canvas.update()
+                self.canvas.save_state()
+                self.update_undo_redo_buttons()
                 self.current_file = file_path
             else:
                 QMessageBox.warning(self, "Error", "Failed to load image!")
