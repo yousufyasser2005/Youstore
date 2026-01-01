@@ -10,7 +10,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                               QLabel, QPushButton, QFrame, QDialog, QRadioButton,
                               QButtonGroup, QMessageBox)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QPoint, QObject
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen
 
 try:
@@ -346,6 +346,27 @@ class ChessBoard(QWidget):
             self.move_made.emit()
 
 
+class AIWorker(QObject):
+    """Worker for AI move calculation"""
+    move_ready = pyqtSignal(object)
+    
+    def __init__(self, ai, board):
+        super().__init__()
+        self.ai = ai
+        self.board = board
+    
+    def calculate_move(self):
+        try:
+            # Create a copy of the board for thread safety
+            import copy
+            board_copy = copy.deepcopy(self.board)
+            move = self.ai.get_best_move(board_copy)
+            self.move_ready.emit(move)
+        except Exception as e:
+            print(f"AI Error: {e}")
+            self.move_ready.emit(None)
+
+
 class ChessGame(QWidget):
     """Main chess game window"""
     
@@ -353,6 +374,7 @@ class ChessGame(QWidget):
         super().__init__()
         self.ai = ChessAI(difficulty=2)
         self.ai_thinking = False
+        self.ai_worker = None
         self.setup_ui()
         self.setWindowTitle("♟️ Chess - YouOS")
         self.resize(700, 780)
@@ -607,21 +629,26 @@ class ChessGame(QWidget):
             QTimer.singleShot(500, self.make_ai_move)
     
     def make_ai_move(self):
-        def ai_job():
-            move = self.ai.get_best_move(self.chess_board.board)
-            if move:
-                QTimer.singleShot(0, lambda: self.apply_ai_move(move))
+        """Make AI move in background thread"""
+        self.ai_worker = AIWorker(self.ai, self.chess_board.board)
+        self.ai_worker.move_ready.connect(self.apply_ai_move)
         
-        threading.Thread(target=ai_job, daemon=True).start()
+        # Run in thread
+        threading.Thread(target=self.ai_worker.calculate_move, daemon=True).start()
     
     def apply_ai_move(self, move):
-        self.chess_board.board.push(move)
+        """Apply AI move from main thread"""
+        if move:
+            self.chess_board.board.push(move)
+        
         self.ai_thinking = False
         self.chess_board.update()
         self.update_status()
         
         if self.chess_board.board.is_game_over():
             self.show_game_over()
+        
+        self.ai_worker = None
     
     def update_status(self):
         if self.ai_thinking:
