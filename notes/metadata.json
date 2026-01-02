@@ -1,6 +1,6 @@
 {
     "name": "Notes",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A beautiful and feature-rich note-taking application with auto-save, categories, and search functionality. Perfect for organizing your thoughts, tasks, and ideas.",
     "author": "YouOS Team",
     "category": "Productivity",
@@ -17,5 +17,6 @@
     "main_file": "main.py",
     "requirements": [
         "PyQt6"
-    ]
+    ],
+    "changelog": "v1.0.1 - Minor bug fixes and performance improvements"
 }
