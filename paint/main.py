@@ -475,6 +475,7 @@ class PaintApp(QWidget):
         
         # Setup keyboard shortcuts
         from PyQt6.QtGui import QShortcut, QKeySequence
+        from PyQt6.QtCore import QTimer as QtTimer
         
         undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
         undo_shortcut.activated.connect(self.undo)
@@ -483,7 +484,7 @@ class PaintApp(QWidget):
         redo_shortcut.activated.connect(self.redo)
         
         # Initialize button states
-        QTimer.singleShot(100, self.update_undo_redo_buttons)
+        QtTimer.singleShot(100, self.update_undo_redo_buttons)
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
