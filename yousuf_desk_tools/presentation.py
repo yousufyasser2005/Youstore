@@ -781,3 +781,58 @@ class Presentation(QWidget):
                 play_sound("success.wav")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
+    def save_presentation(self):
+        """Save presentation"""
+        self.save_current_slide()
+        
+        if self.current_file:
+            self.save_to_file(self.current_file)
+        else:
+            self.save_as_presentation()
+    
+    def save_as_presentation(self):
+        """Save presentation as"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Presentation", "",
+            "JSON Files (*.json);;All Files (*.*)"
+        )
+        
+        if file_path:
+            self.save_to_file(file_path)
+    
+    def save_to_file(self, file_path):
+        """Save to file"""
+        try:
+            data = {
+                'slides': [s.to_dict() for s in self.slides]
+            }
+            
+            with open(file_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            self.current_file = file_path
+            self.is_modified = False
+            self.doc_name.setText(Path(file_path).name)
+            self.status_label.setText("Presentation saved")
+            play_sound("success.wav")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save file: {str(e)}")
+    
+    def go_back(self):
+        """Return to launcher"""
+        if self.is_modified:
+            reply = QMessageBox.question(
+                self, "Unsaved Changes",
+                "Do you want to save changes before going back?",
+                QMessageBox.StandardButton.Save | 
+                QMessageBox.StandardButton.Discard | 
+                QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Save:
+                self.save_presentation()
+                self.back_requested.emit()
+            elif reply == QMessageBox.StandardButton.Discard:
+                self.back_requested.emit()
+        else:
+            self.back_requested.emit()
