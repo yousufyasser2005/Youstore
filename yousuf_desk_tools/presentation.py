@@ -780,4 +780,4 @@ class Presentation(QWidget):
                 self.load_slide(0)
                 play_sound("success.wav")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"
+                QMessageBox.critical(self, "Error", f"Failed to open file: {str(e)}")
