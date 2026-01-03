@@ -31,6 +31,7 @@ COLORS = {
     'accent_slides': '#dc2626',
     'text_primary': '#ffffff',
     'text_secondary': '#9ca3af',
+    'border': '#374151',
 }
 
 DEFAULT_SLIDE_BG = '#ffffff'
