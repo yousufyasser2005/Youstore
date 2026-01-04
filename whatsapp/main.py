@@ -112,14 +112,16 @@ class WhatsAppWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # Top bar
-        top_bar = self.create_top_bar()
-        layout.addWidget(top_bar)
-        
-        # Web view
+        # Create web view first (needed by top bar)
         self.web_view = WhatsAppWebView()
         self.web_view.loadStarted.connect(self.on_load_started)
         self.web_view.loadFinished.connect(self.on_load_finished)
+        
+        # Top bar (needs web_view to exist)
+        top_bar = self.create_top_bar()
+        layout.addWidget(top_bar)
+        
+        # Add web view to layout
         layout.addWidget(self.web_view)
         
         # Status bar
