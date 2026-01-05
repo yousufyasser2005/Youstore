@@ -1,6 +1,6 @@
 {
     "name": "Paint",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A full-featured painting application with multiple drawing tools, selection/move functionality, undo/redo support, and file management. Draw, create, and express your creativity!",
     "author": "YouOS Team",
     "category": "Graphics",
