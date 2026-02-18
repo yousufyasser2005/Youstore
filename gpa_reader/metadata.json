@@ -1,0 +1,25 @@
+{
+    "name": "GPA Report Reader",
+    "version": "1.0.0",
+    "description": "A sleek academic tool that reads student GPA reports from PDF files and displays a sorted list of all students by GPA. Supports drag & drop, real-time search, and CSV export.",
+    "author": "YouOS Team",
+    "category": "Education",
+    "icon": "📊",
+    "size": "~45KB",
+    "features": [
+        "PDF drag & drop support",
+        "Sort by highest or lowest GPA",
+        "Real-time student search",
+        "GPA statistics dashboard",
+        "Medal ranking for top 3 students",
+        "Letter grade conversion",
+        "CSV export",
+        "Beautiful dark UI matching YouOS style"
+    ],
+    "main_file": "gpa_reader.py",
+    "requirements": [
+        "PyQt6",
+        "pdfplumber"
+    ],
+    "changelog": "v1.0.0 - Initial release with PDF parsing, sorting, search, and CSV export"
+}
